@@ -57,6 +57,33 @@ async function createUsersTable() {
             );
         `);
 
+
+        // ======================================
+        // CREATE DEFAULT USERS
+        // ======================================
+
+        const associateHash =
+            await bcrypt.hash("Viji@2006", 10);
+
+        const managerHash =
+            await bcrypt.hash("Manager@123", 10);
+
+
+        await pool.query(`
+            INSERT INTO users
+                (name, login_id, password_hash, role)
+            VALUES
+                ('Associate User', 'ASSOC001', $1, 'Associate'),
+                ('Manager User', 'MAN001', $2, 'Manager')
+            ON CONFLICT (login_id) DO NOTHING;
+        `, [
+            associateHash,
+            managerHash
+        ]);
+
+
+        console.log("Default users are ready.");
+
         console.log("Users table is ready.");
 
     }
