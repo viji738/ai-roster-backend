@@ -255,6 +255,205 @@ app.post("/login", async (req, res) => {
 });
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ==========================================
+// CREATE ASSOCIATE USER API
+// ==========================================
+
+app.post("/create-associate", async (req, res) => {
+
+    try {
+
+        const {
+            name,
+            loginId,
+            temporaryPassword
+        } = req.body;
+
+
+        // ======================================
+        // CHECK EMPTY FIELDS
+        // ======================================
+
+        if (
+            !name ||
+            !loginId ||
+            !temporaryPassword
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "Please fill all the fields."
+
+            });
+        }
+
+
+        // ======================================
+        // PASSWORD LENGTH
+        // ======================================
+
+        if (temporaryPassword.length < 8) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "Temporary password must be at least 8 characters."
+
+            });
+        }
+
+
+        // ======================================
+        // CHECK LOGIN ID
+        // ======================================
+
+        const existingUser =
+            await pool.query(
+
+                `
+                SELECT id
+                FROM users
+                WHERE login_id = $1
+                `,
+
+                [loginId]
+
+            );
+
+
+        if (existingUser.rows.length > 0) {
+
+            return res.status(409).json({
+
+                success: false,
+
+                message:
+                    "Login ID already exists."
+
+            });
+        }
+
+
+        // ======================================
+        // HASH TEMPORARY PASSWORD
+        // ======================================
+
+        const passwordHash =
+            await bcrypt.hash(
+                temporaryPassword,
+                10
+            );
+
+
+        // ======================================
+        // CREATE ASSOCIATE
+        // ======================================
+
+        const result =
+            await pool.query(
+
+                `
+                INSERT INTO users
+                    (
+                        name,
+                        login_id,
+                        password_hash,
+                        role
+                    )
+                VALUES
+                    ($1, $2, $3, 'Associate')
+                RETURNING
+                    id,
+                    name,
+                    login_id,
+                    role
+                `,
+
+                [
+                    name,
+                    loginId,
+                    passwordHash
+                ]
+
+            );
+
+
+        // ======================================
+        // SUCCESS
+        // ======================================
+
+        res.status(201).json({
+
+            success: true,
+
+            message:
+                "Associate account created successfully.",
+
+            user:
+                result.rows[0]
+
+        });
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Create associate error:",
+            error
+        );
+
+        res.status(500).json({
+
+            success: false,
+
+            message:
+                "Server error."
+
+        });
+
+    }
+
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ==========================================
 // CHANGE PASSWORD API
 // ==========================================
