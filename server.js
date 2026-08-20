@@ -1,27 +1,74 @@
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
+const { Pool } = require("pg");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
+
 // ==========================================
-// HASHED LOGIN CREDENTIALS
+// POSTGRESQL CONNECTION
 // ==========================================
 
-const users = {
-    Associate: {
-        loginId: "ASSOC001",
-        passwordHash: "$2b$10$zuhZHXk/PenPdu8TQM6CY.Rf/MjcE4okhGadEnKrhDCKamE9mJVJ2"
-    },
-
-    Manager: {
-        loginId: "MAN001",
-        passwordHash: "$2b$10$rb69ah06k5x9kMiN5U689.CKqk58vyTjjqoU3.9czXfSFAIja.lhC"
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
     }
-};
+});
+
+
+// ==========================================
+// TEST DATABASE CONNECTION
+// ==========================================
+
+pool.connect()
+    .then(client => {
+        console.log("PostgreSQL connected successfully.");
+        client.release();
+    })
+    .catch(error => {
+        console.error(
+            "PostgreSQL connection error:",
+            error.message
+        );
+    });
+
+
+// ==========================================
+// CREATE USERS TABLE
+// ==========================================
+
+async function createUsersTable() {
+
+    try {
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                login_id VARCHAR(50) UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role VARCHAR(20) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        console.log("Users table is ready.");
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "Users table error:",
+            error.message
+        );
+    }
+}
 
 
 // ==========================================
@@ -40,7 +87,9 @@ app.post("/login", async (req, res) => {
         } = req.body;
 
 
-        // Check fields
+        // ======================================
+        // CHECK EMPTY FIELDS
+        // ======================================
 
         if (
             !name ||
@@ -50,75 +99,130 @@ app.post("/login", async (req, res) => {
         ) {
 
             return res.status(400).json({
+
                 success: false,
-                message: "Please fill all the fields."
+
+                message:
+                    "Please fill all the fields."
+
             });
         }
 
 
-        // Check role
+        // ======================================
+        // FIND USER
+        // ======================================
 
-        const user = users[role];
+        const result = await pool.query(
 
-        if (!user) {
+            `
+            SELECT
+                id,
+                name,
+                login_id,
+                password_hash,
+                role
+            FROM users
+            WHERE login_id = $1
+            AND role = $2
+            `,
+            
+            [
+                loginId,
+                role
+            ]
+        );
+
+
+        // ======================================
+        // USER NOT FOUND
+        // ======================================
+
+        if (result.rows.length === 0) {
 
             return res.status(401).json({
+
                 success: false,
-                message: "Invalid role selected."
+
+                message:
+                    "Invalid Login ID or role."
+
             });
         }
 
 
-        // Check Login ID
-
-        if (loginId !== user.loginId) {
-
-            return res.status(401).json({
-                success: false,
-                message: "Invalid Login ID."
-            });
-        }
+        const user = result.rows[0];
 
 
-        // Compare password with hash
+        // ======================================
+        // CHECK PASSWORD
+        // ======================================
 
         const passwordMatch =
             await bcrypt.compare(
                 password,
-                user.passwordHash
+                user.password_hash
             );
 
 
         if (!passwordMatch) {
 
             return res.status(401).json({
+
                 success: false,
-                message: "Incorrect password."
+
+                message:
+                    "Incorrect password."
+
             });
         }
 
 
-        // Login successful
+        // ======================================
+        // LOGIN SUCCESS
+        // ======================================
 
         res.json({
+
             success: true,
-            message: "Login successful!",
+
+            message:
+                "Login successful!",
+
             user: {
-                name: name,
-                role: role,
-                loginId: loginId
+
+                id:
+                    user.id,
+
+                name:
+                    user.name,
+
+                role:
+                    user.role,
+
+                loginId:
+                    user.login_id
+
             }
+
         });
 
     }
 
     catch (error) {
 
-        console.error(error);
+        console.error(
+            "Login error:",
+            error
+        );
 
         res.status(500).json({
+
             success: false,
-            message: "Server error."
+
+            message:
+                "Server error."
+
         });
     }
 
@@ -131,7 +235,9 @@ app.post("/login", async (req, res) => {
 
 app.get("/", (req, res) => {
 
-    res.send("AI Automatic Roster Backend is running.");
+    res.send(
+        "AI Automatic Roster Backend is running."
+    );
 
 });
 
@@ -140,8 +246,20 @@ app.get("/", (req, res) => {
 // SERVER
 // ==========================================
 
-const PORT = process.env.PORT || 5000;
+const PORT =
+    process.env.PORT || 5000;
 
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port ${PORT}`);
-});
+
+app.listen(
+    PORT,
+    "0.0.0.0",
+    async () => {
+
+        console.log(
+            `Server running on port ${PORT}`
+        );
+
+        await createUsersTable();
+
+    }
+);
